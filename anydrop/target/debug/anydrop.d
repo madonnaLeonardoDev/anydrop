@@ -1,0 +1,1 @@
+/home/mfleo/Code/anydrop/target/debug/anydrop: /home/mfleo/Code/anydrop/src/main.rs /home/mfleo/Code/anydrop/src/port_discovery.rs /home/mfleo/Code/anydrop/src/qrcode_gen.rs /home/mfleo/Code/anydrop/src/root_page.rs /home/mfleo/Code/anydrop/src/server.rs /home/mfleo/Code/anydrop/src/utils.rs

@@ -1,0 +1,11 @@
+/home/mfleo/Code/anydrop/target/debug/deps/futures_core-4a6035f4c92d690d.d: /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/lib.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/future.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/stream.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/mod.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/poll.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/__internal/mod.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/__internal/atomic_waker.rs
+
+/home/mfleo/Code/anydrop/target/debug/deps/libfutures_core-4a6035f4c92d690d.rmeta: /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/lib.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/future.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/stream.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/mod.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/poll.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/__internal/mod.rs /home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/__internal/atomic_waker.rs
+
+/home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/lib.rs:
+/home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/future.rs:
+/home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/stream.rs:
+/home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/mod.rs:
+/home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/poll.rs:
+/home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/__internal/mod.rs:
+/home/mfleo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-core-0.3.34/src/task/__internal/atomic_waker.rs:
