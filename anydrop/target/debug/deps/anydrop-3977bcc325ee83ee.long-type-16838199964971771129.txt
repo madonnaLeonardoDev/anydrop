@@ -1,0 +1,2 @@
+for<'a> fn(tokio::fs::File, &'a str) -> impl Future<Output = Result<impl IntoResponse, std::string::String>> {stream_file}
+for<'a> fn(tokio::fs::File, &'a str) -> impl Future<Output = Result<impl IntoResponse, std::string::String>> {stream_file}: Handler<_, _>

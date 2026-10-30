@@ -1,0 +1,2 @@
+for<'a> fn(Multipart, &'a std::path::Path) -> impl Future<Output = impl IntoResponse> {handle_upload}
+for<'a> fn(Multipart, &'a std::path::Path) -> impl Future<Output = impl IntoResponse> {handle_upload}: Handler<_, _>

@@ -1,0 +1,1 @@
+fn(Multipart, State<AppState>) -> impl Future<Output = impl IntoResponse> {handle_upload}: Handler<_, _>

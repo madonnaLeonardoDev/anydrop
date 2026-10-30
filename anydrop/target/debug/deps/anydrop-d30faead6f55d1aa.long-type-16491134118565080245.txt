@@ -1,0 +1,3 @@
+futures_util::future::try_future::try_flatten::TryFlatten<Fut, <Fut as futures_core::future::TryFuture>::Ok>
+futures_util::stream::stream::flatten::Flatten<St, <St as futures_core::stream::Stream>::Item>
+futures_util::stream::try_stream::try_flatten_unordered::NestedTryStreamIntoEitherTryStream<St>
