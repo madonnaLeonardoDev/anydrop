@@ -3,7 +3,7 @@ use std::env;
 use std::path::{PathBuf};
 use crate::{qrcode_gen::qr_from_str, root_page::{send_page, recieve_page}};
 use crate::utils::verbose_print;
-use axum::extract::State;
+use axum::extract::{State, DefaultBodyLimit};
 use tokio::{
     net::TcpListener,
     fs::File,
@@ -100,7 +100,8 @@ fn get_app(server: ServerType ) -> Result<Router, String> {
             let app:Router =  Router::new()
                 .route("/", get(recieve_page))
                 .route("/upload", post(handle_upload))
-                .with_state(state);
+                .with_state(state)
+                .layer(DefaultBodyLimit::disable());
 
 
             app

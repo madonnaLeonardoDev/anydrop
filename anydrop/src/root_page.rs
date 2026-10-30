@@ -197,6 +197,8 @@ let page_str: &str = r#"
                     const blob = xhr.response;
                     const blobUrl = window.URL.createObjectURL(blob);
                     
+                    const fileName = document.getElementById('fileName').innerText.trim();
+
                     const anchor = document.createElement('a');
                     anchor.style.display = 'none';
                     anchor.href = blobUrl;
