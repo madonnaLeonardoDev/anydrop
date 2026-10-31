@@ -2,10 +2,14 @@ use crate::Cli;
 use std::collections::HashMap;
 use std::net::{IpAddr};
 use std::env;
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm,Nonce,
+};
 use tokio::io::AsyncRead;
 use walkdir::{WalkDir};
 use std::path::{PathBuf};
-use crate::{utils::print_url, root_page::{send_page, recieve_page}};
+use crate::{utils::print_url, root_page::{send_page, recive_page}};
 use crate::utils::{AnydropPath, verbose_print};
 use axum::extract::{State, DefaultBodyLimit, Query};
 use serde::{Deserialize};
@@ -29,7 +33,7 @@ use axum::{
 #[derive(Clone)]
 pub enum ServerType {
     Send(String),
-    Recieve(Option<String>)
+    Recive(Option<String>)
 }
 
 #[derive(Clone)]
@@ -102,7 +106,7 @@ fn get_app(server: ServerType, cli: &Cli, local_ip: IpAddr, port: u16) -> Result
 
             (app, url)
         },
-        ServerType::Recieve(desination_str) => {
+        ServerType::Recive(desination_str) => {
             let destination_path = match desination_str {
                 Some(s) => PathBuf::from(s),
                 None => {
@@ -115,14 +119,19 @@ fn get_app(server: ServerType, cli: &Cli, local_ip: IpAddr, port: u16) -> Result
                 return  Err("[-] Destination path must be a directory".to_string())
             }
 
+            let mut key: Option<[u8; 32]> = None;
+            if cli.safe {
+                key = Some(generate_key_utf8());
+            }
+
             let state = AppState {
                 dir: Some(destination_path),
                 dirs_map: None,
-                encryption: None
+                encryption: key
             };
             let url = print_url(&local_ip, &port, &state.encryption);
             let app:Router =  Router::new()
-                .route("/", get(recieve_page))
+                .route("/", get(recive_page))
                 .route("/upload", post(handle_upload))
                 .with_state(state)
                 .layer(DefaultBodyLimit::disable());
@@ -179,65 +188,118 @@ async fn handle_download(
 }
 
 
-async fn handle_upload(State(state): State<AppState>, mut multipart: Multipart, ) -> impl IntoResponse {
+async fn handle_upload(
+    State(state): State<AppState>, 
+    mut multipart: Multipart,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     let mut save_path = state.dir.unwrap();
 
     while let Some(field) = match multipart.next_field().await {
         Ok(f) => f,
-        Err(_) => return Html("[-] Failed to parse multipart stream".to_string()),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, "[-] Failed to parse multipart stream".to_string())),
     } {
         let name = field.name().unwrap_or("").to_string();
 
         if name == "file" {
-                match field.file_name().map(|n| n.to_string()){
-                    Some(s) =>{
-                        save_path.push(&s);
-                        if save_path.exists() {
-                            let mut i: usize = 0;
-                            let file_name: (&str, String) = s.split_once(".")
-                            .and_then(|t| Some((t.0, format!(".{}", t.1)))).unwrap_or((&s, "".to_string()));
-                            save_path.pop();
-                            save_path.push(format!("{}_{}{}",file_name.0,i.to_string(),file_name.1));
+            match field.file_name().map(|n| n.to_string()) {
+                Some(s) => {
+                    save_path.push(&s);
+                    if save_path.exists() {
+                        let mut i: usize = 0;
+                        let file_name: (&str, String) = s.split_once(".")
+                            .map(|t| (t.0, format!(".{}", t.1)))
+                            .unwrap_or((&s, "".to_string()));
+                        save_path.pop();
+                        save_path.push(format!("{}_{}{}", file_name.0, i.to_string(), file_name.1));
 
-                            while save_path.exists() {
-                                i+=1;
-                                save_path.pop();
-                                save_path.push(format!("{}_{}{}",file_name.0,i.to_string(),file_name.1));
-                            }
-                        }                        
-                    },
-                    None => {
-                        let mut file_name = ("anydrop_file", 0);
-                        save_path.push(format!("{}{}",file_name.0, file_name.1));
-                        let mut i: usize = 1;
                         while save_path.exists() {
+                            i += 1;
                             save_path.pop();
-                            file_name.1 = i;
-                            save_path.push(format!("{}{}",file_name.0, file_name.1));
-                            i+=1;
+                            save_path.push(format!("{}_{}{}", file_name.0, i.to_string(), file_name.1));
                         }
+                    }                        
+                },
+                None => {
+                    let mut file_name = ("anydrop_file", 0);
+                    save_path.push(format!("{}{}", file_name.0, file_name.1));
+                    let mut i: usize = 1;
+                    while save_path.exists() {
+                        save_path.pop();
+                        file_name.1 = i;
+                        save_path.push(format!("{}{}", file_name.0, file_name.1));
+                        i += 1;
                     }
-                }
-
-            let mut file = match File::create(&save_path).await {
-                Ok(f) => f,
-                Err(e) => return Html(format!("[-] Failed to create file on disk: {}", e)),
-            };
-            let mut field = field;
-            while let Some(chunk_result) = field.chunk().await.transpose() {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => return Html(format!("[-] Error reading chunk: {}", e)),
-                };
-
-                if let Err(e) = file.write_all(&chunk).await {
-                    return Html(format!("[-] Failed to write to disk: {}", e));
                 }
             }
 
-            break;
+            let mut file = match File::create(&save_path).await {
+                Ok(f) => f,
+                Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Failed to create file on disk: {}", e))),
+            };
+            
+            let mut field = field;
+
+            if let Some(k) = state.encryption {
+                let cipher = match Aes256Gcm::new_from_slice(&k) {
+                    Ok(c) => c,
+                    Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Error generating cipher: {}", e))),
+                };
+
+                let mut buffer: Vec<u8> = Vec::new();
+
+                while let Some(chunk_result) = field.chunk().await.transpose() {
+                    let chunk = match chunk_result {
+                        Ok(c) => c,
+                        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Error reading chunk: {}", e))),
+                    };
+
+                    buffer.extend_from_slice(&chunk);
+
+                    while buffer.len() >= 4 { 
+                        let mut len_bytes = [0u8; 4];
+                        len_bytes.copy_from_slice(&buffer[0..4]);
+                        let cipher_len = u32::from_be_bytes(len_bytes) as usize;
+                        let total_packet_len = 4 + 12 + cipher_len;
+
+                        if buffer.len() < total_packet_len {
+                            break;
+                        }
+
+                        let nonce = match Nonce::try_from(&buffer[4..16]) {
+                            Ok(n) => n,
+                            Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Error reading nonce: {}", e))),
+                        };
+
+                        let ciphertext = &buffer[16..total_packet_len];
+
+                        let plaintext = match cipher.decrypt(&nonce, ciphertext) {
+                            Ok(pt) => pt,
+                            Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Decryption Failed: {}", e))),
+                        };
+
+                        if let Err(e) = file.write_all(&plaintext).await {
+                            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Failed to write to disk: {}", e)));
+                        }
+
+                        buffer.drain(0..total_packet_len);
+                    }
+                }
+            } else {
+                while let Some(chunk_result) = field.chunk().await.transpose() {
+                    let chunk = match chunk_result {
+                        Ok(c) => c,
+                        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Error reading chunk: {}", e))),
+                    };
+
+                    if let Err(e) = file.write_all(&chunk).await {
+                        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("[-] Failed to write to disk: {}", e)));
+                    }
+                }
+            }
+
+            return Ok(Html("Upload complete!".to_string()));
         }
     }
 
-    Html("Upload complete!".to_string())
+    Ok(Html("No file uploaded".to_string()))
 }

@@ -441,13 +441,17 @@ pub async fn send_page(State(state): State<AppState>) -> Html<String> {
     Html(final_page)
 }
 
-pub async fn recieve_page() -> Html<&'static str> {
-    Html(r#"<!DOCTYPE html>
+pub async fn recive_page(State(state): State<AppState>) -> Html<String> {
+    // 1. Pure UI HTML & CSS Template (includes node-forge CDN script in head)
+    let page_template = r#"
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>anydrop ⚡</title>
+    <!-- Pure JavaScript Crypto Library (Bypasses non-secure context restrictions) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -554,12 +558,10 @@ pub async fn recieve_page() -> Html<&'static str> {
             margin-top: 4px;
         }
 
-        /* Hidden file input with 'multiple' attribute enabled */
         #fileInput {
             display: none;
         }
 
-        /* File List Container */
         .file-list {
             width: 100%;
             max-height: 150px;
@@ -609,6 +611,7 @@ pub async fn recieve_page() -> Html<&'static str> {
             font-size: 0.85rem;
             text-align: center;
             min-height: 1.2em;
+            word-break: break-word;
         }
 
         .progress-track {
@@ -650,7 +653,6 @@ pub async fn recieve_page() -> Html<&'static str> {
         }
 
         .upload-btn:active:not(:disabled) {
-            background-color: var(--accent-hover);
             transform: scale(0.98);
         }
 
@@ -663,17 +665,14 @@ pub async fn recieve_page() -> Html<&'static str> {
 </head>
 <body>
     <div class="main-card">
-        <!-- Interactive Drag and Drop Zone -->
         <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
             <div class="drop-zone-icon">📁</div>
             <div class="drop-zone-text">Choose files or drag them here</div>
-            <div class="drop-zone-hint">Multiple files supported</div>
+            <div class="drop-zone-hint">Multiple files supported {E2EE_BADGE}</div>
         </div>
 
-        <!-- Added multiple attribute here -->
         <input type="file" id="fileInput" multiple onchange="handleFileSelect(this.files)">
 
-        <!-- Scrollable list container for selected files -->
         <div class="file-list" id="fileList"></div>
 
         <div class="status-text" id="statusText">Select files to upload</div>
@@ -688,7 +687,9 @@ pub async fn recieve_page() -> Html<&'static str> {
     </div>
 
     <script>
-        // Use an array to store multiple selected files dynamically
+        // Modular Encryption Injection
+        {ENCRYPTION_MODULE}
+
         let selectedFiles = [];
 
         const dropZone = document.getElementById('dropZone');
@@ -699,7 +700,6 @@ pub async fn recieve_page() -> Html<&'static str> {
         const uploadBtn = document.getElementById('uploadBtn');
         const btnText = document.getElementById('btnText');
 
-        // Drag & Drop Event Listeners
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, (e) => {
                 e.preventDefault();
@@ -725,11 +725,9 @@ pub async fn recieve_page() -> Html<&'static str> {
         });
 
         function handleFileSelect(files) {
-            // Append newly chosen files to our existing array
             for (let i = 0; i < files.length; i++) {
                 selectedFiles.push(files[i]);
             }
-            // Reset input value so selecting the same file again triggers onchange if needed
             fileInput.value = '';
             renderFileList();
         }
@@ -776,14 +774,12 @@ pub async fn recieve_page() -> Html<&'static str> {
             btnText.innerText = `Upload (${selectedFiles.length})`;
         }
 
-        // Sequential looping uploader function
         async function uploadFiles() {
             if (selectedFiles.length === 0) return;
 
             uploadBtn.disabled = true;
             progressFill.style.width = '0%';
 
-            let uploadedCount = 0;
             const totalFiles = selectedFiles.length;
 
             for (let i = 0; i < totalFiles; i++) {
@@ -792,13 +788,11 @@ pub async fn recieve_page() -> Html<&'static str> {
 
                 try {
                     await uploadSingleFile(file, (percent) => {
-                        // Calculate overall progress across files
                         const overallPercent = Math.round(((i + (percent / 100)) / totalFiles) * 100);
                         progressFill.style.width = overallPercent + '%';
                     });
-                    uploadedCount++;
                 } catch (error) {
-                    statusText.innerText = `Failed to upload: ${file.name}`;
+                    statusText.innerText = error.message;
                     uploadBtn.disabled = false;
                     btnText.innerText = 'Retry Upload';
                     return;
@@ -816,38 +810,123 @@ pub async fn recieve_page() -> Html<&'static str> {
             }, 2000);
         }
 
-        // Helper function that returns a Promise for individual XHR file requests
         function uploadSingleFile(file, onProgressCallback) {
-            return new Promise((resolve, reject) => {
-                const formData = new FormData();
-                formData.append('file', file);
+            return new Promise(async (resolve, reject) => {
+                try {
+                    let payloadBlob = file;
 
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', '/upload', true);
-
-                xhr.upload.onprogress = function (event) {
-                    if (event.lengthComputable) {
-                        const percent = (event.loaded / event.total) * 100;
-                        onProgressCallback(percent);
+                    // If encryption module is injected, encrypt file blob before sending
+                    if (typeof encryptBuffer === 'function') {
+                        statusText.innerText = `Encrypting ${file.name}...`;
+                        const rawBuffer = await file.arrayBuffer();
+                        const encryptedBuffer = await encryptBuffer(rawBuffer);
+                        payloadBlob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
                     }
-                };
 
-                xhr.onload = function () {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Server status ${xhr.status}`));
-                    }
-                };
+                    const formData = new FormData();
+                    formData.append('file', payloadBlob, file.name);
 
-                xhr.onerror = function () {
-                    reject(new Error('Network error'));
-                };
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', '/upload', true);
 
-                xhr.send(formData);
+                    xhr.upload.onprogress = function (event) {
+                        if (event.lengthComputable) {
+                            const percent = (event.loaded / event.total) * 100;
+                            onProgressCallback(percent);
+                        }
+                    };
+
+                    xhr.onload = function () {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            resolve();
+                        } else {
+                            const errMsg = xhr.responseText || `Server Error (Status ${xhr.status})`;
+                            reject(new Error(errMsg));
+                        }
+                    };
+
+                    xhr.onerror = function () {
+                        reject(new Error('Network connection error'));
+                    };
+
+                    xhr.send(formData);
+                } catch (err) {
+                    reject(err);
+                }
             });
         }
     </script>
 </body>
-</html>"#)
+</html>
+"#;
+
+    // 2. Pure-JS Encryption Module using node-forge (AES-GCM packet framing)
+let encryption_module = r#"
+        const ENCRYPTION_KEY = window.location.hash.substring(1);
+
+        async function encryptBuffer(rawBuffer) {
+            if (!ENCRYPTION_KEY) {
+                throw new Error("Missing encryption key in URL hash (#KEY)");
+            }
+
+            const rawBytes = new Uint8Array(rawBuffer);
+            
+            // The key in the URL hash is already valid ASCII bytes/string
+            const keyBytes = forge.util.createBuffer(ENCRYPTION_KEY, 'utf8');
+
+            // 12-byte random IV/nonce
+            const iv = forge.random.getBytesSync(12);
+
+            const cipher = forge.cipher.createCipher('AES-GCM', keyBytes);
+            cipher.start({ iv: iv });
+            cipher.update(forge.util.createBuffer(rawBytes));
+            cipher.finish();
+
+            const ciphertext = cipher.output.getBytes();
+            const tag = cipher.mode.tag.getBytes();
+
+            const cipherLen = ciphertext.length + tag.length;
+            const packetLen = 4 + 12 + cipherLen;
+            const packet = new Uint8Array(packetLen);
+
+            // 1. Write 4-byte Big-Endian length header
+            packet[0] = (cipherLen >> 24) & 0xFF;
+            packet[1] = (cipherLen >> 16) & 0xFF;
+            packet[2] = (cipherLen >> 8) & 0xFF;
+            packet[3] = cipherLen & 0xFF;
+
+            // 2. Copy 12-byte Nonce / IV
+            for (let i = 0; i < 12; i++) {
+                packet[4 + i] = iv.charCodeAt(i);
+            }
+
+            // 3. Copy Ciphertext + 16-byte Tag
+            for (let i = 0; i < ciphertext.length; i++) {
+                packet[16 + i] = ciphertext.charCodeAt(i);
+            }
+            for (let i = 0; i < tag.length; i++) {
+                packet[16 + ciphertext.length + i] = tag.charCodeAt(i);
+            }
+
+            return packet.buffer;
+        }
+    "#;
+
+    let injection = if state.encryption.is_some() {
+        encryption_module
+    } else {
+        ""
+    };
+
+    let badge = if state.encryption.is_some() {
+        "🔒 (E2EE)"
+    } else {
+        ""
+    };
+
+    let final_page = page_template
+        .replace("{ENCRYPTION_MODULE}", injection)
+        .replace("{E2EE_BADGE}", badge);
+
+    Html(final_page)
 }

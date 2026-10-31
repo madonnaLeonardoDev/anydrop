@@ -13,11 +13,11 @@ mod enrcypted_stream;
 #[command(version = "1.0")]
 #[command(about = "A fast local file sharing utility in Rust")]
 pub struct Cli {
-    #[arg(short, long, default_value_t = 0)]
+    #[arg(short, long, default_value_t = 0, global = true)]
     pub port: u16,
-    #[arg(short, long)]
+    #[arg(short, long,  global = true)]
     pub verbose: bool,
-    #[arg(short,long)]
+    #[arg(short,long,  global = true)]
     pub safe: bool,
     #[command(subcommand)]
     command: Commands
@@ -26,11 +26,9 @@ pub struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Send {
-        #[arg(short, long)]
         file: String,
     },
-    Recieve {
-        #[arg(short, long)]
+    Recive {
         path: Option<String>,
     }
 }
@@ -44,8 +42,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
         Commands::Send { file } => {
             start_server(server::ServerType::Send(file.clone()),port.1, port.0, port.2, &cli).await?;
         },
-        Commands::Recieve { path } => {
-            start_server(server::ServerType::Recieve(path.clone()),port.1, port.0, port.2, &cli).await?;
+        Commands::Recive { path } => {
+            start_server(server::ServerType::Recive(path.clone()),port.1, port.0, port.2, &cli).await?;
         }
     }
     Ok(())

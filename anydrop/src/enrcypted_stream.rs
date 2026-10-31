@@ -20,6 +20,7 @@ pub fn generate_key_utf8() -> [u8; 32]{
     bytes
 }
 
+//ENCRYPTION OF STREAM
 
 pub struct EncryptedStream<R> {
     inner: R,               
