@@ -5,7 +5,7 @@ mod root_page;
 mod server;
 use crate::port_discovery::discover_port;
 use crate::server::start_server;
-mod enrcypted_stream;
+mod tcp_stream;
 
 
 #[derive(Parser)]

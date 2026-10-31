@@ -1,2 +1,4 @@
     Checking anydrop v0.1.0 (/home/mfleo/Code/anydrop)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
+error: could not compile `anydrop` (bin "anydrop" test) due to 2 previous errors; 3 warnings emitted
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `anydrop` (bin "anydrop") due to 2 previous errors; 3 warnings emitted

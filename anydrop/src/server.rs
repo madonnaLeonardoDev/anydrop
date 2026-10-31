@@ -6,7 +6,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm,Nonce,
 };
-use tokio::io::AsyncRead;
+use tokio::net::tcp;
 use walkdir::{WalkDir};
 use std::path::{PathBuf};
 use crate::{utils::print_url, root_page::{send_page, recive_page}};
@@ -18,7 +18,7 @@ use tokio::{
     fs::{File},
     io::AsyncWriteExt
 };
-use crate::enrcypted_stream::{EncryptedStream, generate_key_utf8};
+use crate::tcp_stream::{TcpStream, generate_key_utf8};
 use tokio_util::io::{ReaderStream};
 use axum::{
     Router,
@@ -68,6 +68,7 @@ pub async fn start_server(
 
 fn get_app(server: ServerType, cli: &Cli, local_ip: IpAddr, port: u16) -> Result<(Router, String), String> {
     let router:(Router, String) = match server {
+        
         ServerType::Send(file_str) => { 
             let file_path = PathBuf::from(&file_str);
             let mut dirs: HashMap<String,AnydropPath> = HashMap::new();
@@ -153,36 +154,43 @@ async fn handle_download(
     let name = query.name;
     let dirs_map = state.dirs_map.as_ref().unwrap();
     match dirs_map.get(&name) {
+    
         Some(file_path) => {
             let file = file_path.open().await
-                .map_err(|e| 
-                {
+                .map_err(|e| {
                     eprintln!("[-] Could not open file: {}",e);
                     (StatusCode::INTERNAL_SERVER_ERROR, "Could not open file".to_string())
                 })?;
-                
-    
-    let stream_file: Box<dyn AsyncRead + Send + Unpin> = 
-    if let Some(key) = state.encryption {
-        Box::new(EncryptedStream::new(file, &key))
-    } else {
-        Box::new(file)
-    };
-    
-    let stream = ReaderStream::new(stream_file);
+               
+            let mut tcp_stream = TcpStream::new(file);
 
-    let body = Body::from_stream(stream);
+            let chunksize = 64 * 1024;
 
-        return Ok((
-        StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
-            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", name))
-        ],
-        body,
-    )
-    .into_response())
-        }
+            let mut dest_frame = vec![0u8; 4 + 12 + chunksize + 16];
+
+            if let Some(k) = state.encryption {
+                let cipher = Aes256Gcm::new(&k.into());
+                let mut is_next_chunk = true;
+                while is_next_chunk {
+                    is_next_chunk = tcp_stream.encrypt_chunk(&cipher, 64 * 1024, &mut dest_frame).await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+                }
+            }
+            
+            let stream = ReaderStream::new(dest_frame);
+
+            let body = Body::from_stream(stream);
+
+                return Ok((
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+                    (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", name))
+                ],
+                body,
+            )
+            .into_response())
+    }
         None => return Err((StatusCode::NOT_FOUND,"No file matching query found".to_string()))
     };
 }
