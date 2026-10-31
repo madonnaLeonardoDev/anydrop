@@ -3,21 +3,22 @@ mod port_discovery;
 mod utils;
 mod root_page;
 mod server;
-mod qrcode_gen;
 use crate::port_discovery::discover_port;
 use crate::server::start_server;
+mod enrcypted_stream;
 
 
 #[derive(Parser)]
 #[command(name = "anydrop")]
 #[command(version = "1.0")]
 #[command(about = "A fast local file sharing utility in Rust")]
-struct Cli {
+pub struct Cli {
     #[arg(short, long, default_value_t = 0)]
-    port: u16,
+    pub port: u16,
     #[arg(short, long)]
-    verbose: bool,
-
+    pub verbose: bool,
+    #[arg(short,long)]
+    pub safe: bool,
     #[command(subcommand)]
     command: Commands
 }
@@ -37,22 +38,15 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>{
     let cli = Cli::parse();
-    let port = discover_port(cli.port, cli.verbose).await?;
+    let port = discover_port(&cli).await?;
 
-    match cli.command {
+    match &cli.command {
         Commands::Send { file } => {
-            start_server(server::ServerType::Send(file),port.1, port.0, port.2, cli.verbose).await?;
+            start_server(server::ServerType::Send(file.clone()),port.1, port.0, port.2, &cli).await?;
         },
         Commands::Recieve { path } => {
-            start_server(server::ServerType::Recieve(path),port.1, port.0, port.2, cli.verbose).await?;
+            start_server(server::ServerType::Recieve(path.clone()),port.1, port.0, port.2, &cli).await?;
         }
     }
-    
-    
-
-
-    
-
-
     Ok(())
 }

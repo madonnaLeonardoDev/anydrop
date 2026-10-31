@@ -1,0 +1,2 @@
+fn(State<AppState>, Query<DownloadQuery>) -> Result<impl IntoResponse, std::string::String> {handle_download}
+fn(State<AppState>, Query<DownloadQuery>) -> Result<impl IntoResponse, std::string::String> {handle_download}: Handler<_, _>

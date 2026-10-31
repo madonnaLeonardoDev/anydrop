@@ -1,0 +1,2 @@
+for<'a> fn((tokio::fs::File, &'a str)) -> Result<impl IntoResponse, std::string::String> {handle_download}
+for<'a> fn((tokio::fs::File, &'a str)) -> Result<impl IntoResponse, std::string::String> {handle_download}: Handler<_, _>

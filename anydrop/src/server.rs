@@ -1,14 +1,20 @@
+use crate::Cli;
+use std::collections::HashMap;
 use std::net::{IpAddr};
 use std::env;
+use tokio::io::AsyncRead;
+use walkdir::{WalkDir};
 use std::path::{PathBuf};
-use crate::{qrcode_gen::qr_from_str, root_page::{send_page, recieve_page}};
-use crate::utils::verbose_print;
-use axum::extract::{State, DefaultBodyLimit};
+use crate::{utils::print_url, root_page::{send_page, recieve_page}};
+use crate::utils::{AnydropPath, verbose_print};
+use axum::extract::{State, DefaultBodyLimit, Query};
+use serde::{Deserialize};
 use tokio::{
     net::TcpListener,
-    fs::File,
+    fs::{File},
     io::AsyncWriteExt
 };
+use crate::enrcypted_stream::{EncryptedStream, generate_key_utf8};
 use tokio_util::io::{ReaderStream};
 use axum::{
     Router,
@@ -28,57 +34,73 @@ pub enum ServerType {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub dir: PathBuf,
+    pub dir: Option<PathBuf>,
+    pub dirs_map: Option<HashMap<String,AnydropPath>>,
+    pub encryption: Option<[u8; 32]>
 }
 
+#[derive(Deserialize)]
+pub struct DownloadQuery {
+    pub name: String
+}
 
 pub async fn start_server(
     server: ServerType,
     port: u16,
     local_ip: IpAddr,
     listener: TcpListener,
-    verbose: bool,
+    cli: &Cli,
 ) -> Result<(), String> {
 
-    let url = format!("http://{}:{}",local_ip, port);
+    let app: (Router, String) = get_app(server, cli, local_ip, port)?;
 
-    let qr_code = qr_from_str(&url);
-
-    println!("{}\nURL IS: {}",qr_code,url);
-
-    let app: Router = get_app(server)?;
-
-    verbose_print("[+] Serving Html Page on HTTP socket".to_string(), verbose);
-
-    axum::serve(listener, app).await
+    verbose_print("[+] Serving Html Page on HTTP socket".to_string(), cli.verbose);
+    print!("{}", app.1);
+    axum::serve(listener, app.0).await
         .map_err(|e| e.to_string())?;
-
+    
     Ok(())
 }
 
-fn get_app(server: ServerType ) -> Result<Router, String> {
-
-    let router:Router = match server {
-        ServerType::Send(file_str) => {    
+fn get_app(server: ServerType, cli: &Cli, local_ip: IpAddr, port: u16) -> Result<(Router, String), String> {
+    let router:(Router, String) = match server {
+        ServerType::Send(file_str) => { 
             let file_path = PathBuf::from(&file_str);
-
+            let mut dirs: HashMap<String,AnydropPath> = HashMap::new();
             if !file_path.exists() {
                 return Err(format!("[-] File Path '{}' doesn't exist", file_str))
             }
             if file_path.is_dir() {
-                return Err(format!("[-] File Path '{}' doesn't exist", file_str))
+                for entry in WalkDir::new(&file_path).follow_links(true) {
+                    match entry {
+                        Ok(d) => {
+                            if d.path() != &file_path {
+                                dirs.insert(d.file_name().to_str().unwrap().to_owned(),PathBuf::from(d.path()).into());
+                            }
+                                
+                            },
+                        Err(e) => return Err(format!("[-] Failed accessing element inside dir: {}",e))
+                    }
+                }
+
+            }
+            let mut key = None;
+            if cli.safe {
+                key = Some(generate_key_utf8());
             }
 
             let state = AppState {
-                dir: file_path
+                dir: None,
+                dirs_map: Some(dirs),
+                encryption: key
             };
-
+            let url = print_url(&local_ip, &port, &state.encryption);
             let app: Router = Router::new()
                 .route("/", get(send_page))
-                .route("/download", get(stream_file))
+                .route("/download", get(handle_download))
                 .with_state(state);
 
-            app
+            (app, url)
         },
         ServerType::Recieve(desination_str) => {
             let destination_path = match desination_str {
@@ -94,17 +116,17 @@ fn get_app(server: ServerType ) -> Result<Router, String> {
             }
 
             let state = AppState {
-                dir: destination_path 
+                dir: Some(destination_path),
+                dirs_map: None,
+                encryption: None
             };
-
+            let url = print_url(&local_ip, &port, &state.encryption);
             let app:Router =  Router::new()
                 .route("/", get(recieve_page))
                 .route("/upload", post(handle_upload))
                 .with_state(state)
                 .layer(DefaultBodyLimit::disable());
-
-
-            app
+            (app, url)
 
         }
     };
@@ -115,31 +137,50 @@ fn get_app(server: ServerType ) -> Result<Router, String> {
 }
 
 
-async fn stream_file(State(state): State<AppState>) -> Result<impl IntoResponse, String> {
-    let file_path = state.dir; 
+async fn handle_download(
+    State(state): State<AppState>,
+    Query(query): Query<DownloadQuery>
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let name = query.name;
+    let dirs_map = state.dirs_map.as_ref().unwrap();
+    match dirs_map.get(&name) {
+        Some(file_path) => {
+            let file = file_path.open().await
+                .map_err(|e| 
+                {
+                    eprintln!("[-] Could not open file: {}",e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, "Could not open file".to_string())
+                })?;
+                
     
-    let file: (File, &str) = match File::open(&file_path).await {
-        Ok(f) => (f, file_path.file_name().and_then(|n| n.to_str()).unwrap_or("Unkown Name")),
-        Err(e) => return Err(format!("[-] Error opening file: {}", e))
+    let stream_file: Box<dyn AsyncRead + Send + Unpin> = 
+    if let Some(key) = state.encryption {
+        Box::new(EncryptedStream::new(file, &key))
+    } else {
+        Box::new(file)
     };
-
-    let stream = ReaderStream::new(file.0);
+    
+    let stream = ReaderStream::new(stream_file);
 
     let body = Body::from_stream(stream);
 
-    Ok((
+        return Ok((
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, "application/octet-stream".to_string()),
-            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", file.1)),
+            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", name))
         ],
         body,
     )
     .into_response())
+        }
+        None => return Err((StatusCode::NOT_FOUND,"No file matching query found".to_string()))
+    };
 }
 
+
 async fn handle_upload(State(state): State<AppState>, mut multipart: Multipart, ) -> impl IntoResponse {
-    let mut save_path = state.dir;
+    let mut save_path = state.dir.unwrap();
 
     while let Some(field) = match multipart.next_field().await {
         Ok(f) => f,
